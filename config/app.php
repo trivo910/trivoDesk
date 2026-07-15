@@ -21,7 +21,7 @@ return [
     'demo_mode' => (bool) env('DEMO_MODE', false),
 
     // Product version shown in the user menu footer. Override via APP_VERSION.
-    'version' => env('APP_VERSION', '1.2.0'),
+    'version' => env('APP_VERSION', '1.0.0'),
 
     /*
     |--------------------------------------------------------------------------

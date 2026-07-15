@@ -1,0 +1,304 @@
+<?php
+
+namespace App\Services\Ordering;
+
+use App\Models\WaOrder;
+use App\Models\WaOrderItem;
+use App\Models\WaPendingOrder;
+use App\Models\WaProduct;
+use App\Services\AiAgentService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Natural-language ordering brain (Jessica customization, P3). Ties the AI
+ * extractor (P0), the product matcher + anti-sellout inventory (P2) together:
+ *
+ *   parseAndHold()  customer free-text → AI items → match → HOLD stock → cart
+ *   confirm()       held cart → real WaOrder + commit holds
+ *   cancel()        release holds + drop the cart
+ *
+ * Stock is held the moment we understand the order so two customers racing for
+ * the last unit can't both "confirm" it. Holds auto-release on timeout (P2 sweep).
+ */
+class OrderingService
+{
+    public function __construct(
+        private AiAgentService $ai,
+        private ProductMatcher $matcher,
+        private InventoryService $inventory,
+    ) {}
+
+    /**
+     * Parse a customer message into a held cart.
+     *
+     * @return array{ref:string, has_items:bool, items:array, unavailable:array,
+     *               total_minor:int, currency:?string, summary:string}
+     */
+    public function parseAndHold(int $wsId, string $customerPhone, string $text, ?string $groupCode = null, string $model = 'gpt-4o-mini'): array
+    {
+        $digits = preg_replace('/\D+/', '', $customerPhone);
+        $ref    = WaPendingOrder::refFor($wsId, $digits);
+
+        // A new order replaces any prior in-flight cart — free its holds first.
+        $this->inventory->releaseByRef($wsId, $ref);
+
+        $parsed      = $this->aiParseItems($wsId, $text, $model);
+        $lineItems   = [];
+        $unavailable = [];
+        $totalMinor  = 0;
+        $currency    = null;
+
+        foreach ($parsed as $it) {
+            $name = trim((string) ($it['name'] ?? ''));
+            $qty  = max(1, (int) ($it['qty'] ?? 1));
+            if ($name === '') continue;
+
+            $m = $this->matcher->resolve($wsId, $name);
+            /** @var ?WaProduct $p */
+            $p = $m['product'];
+            if (!$p) {
+                $unavailable[] = ['name' => $name, 'qty' => $qty, 'reason' => 'not_found'];
+                continue;
+            }
+
+            $res = $this->inventory->hold($p, $qty, $ref);
+            if (!$res) {
+                $unavailable[] = ['name' => $p->name, 'qty' => $qty, 'reason' => 'out_of_stock', 'available' => $p->availableQty()];
+                continue;
+            }
+
+            $currency = $currency ?: $p->currency_code;
+            $totalMinor += (int) $p->price_minor * $qty;
+            $lineItems[] = [
+                'product_id'  => $p->id,
+                'retailer_id' => $p->sku,
+                'name'        => $p->name,
+                'image_url'   => $p->image_url,
+                'qty'         => $qty,
+                'price_minor' => (int) $p->price_minor,
+                'currency'    => $p->currency_code,
+            ];
+        }
+
+        Log::info('[FLOWTRACE] order parseAndHold', [
+            'workspace_id' => $wsId,
+            'parsed_items' => count($parsed),
+            'matched'      => count($lineItems),
+            'unavailable'  => array_map(fn ($u) => ($u['name'] ?? '') . ' (' . ($u['reason'] ?? '') . ')', $unavailable),
+            'total_minor'  => $totalMinor,
+        ]);
+
+        if (empty($lineItems)) {
+            WaPendingOrder::where('workspace_id', $wsId)->where('customer_phone', $digits)->delete();
+        } else {
+            WaPendingOrder::updateOrCreate(
+                ['workspace_id' => $wsId, 'customer_phone' => $digits],
+                [
+                    'ref'              => $ref,
+                    'items_json'       => $lineItems,
+                    'unavailable_json' => $unavailable,
+                    'total_minor'      => $totalMinor,
+                    'currency_code'    => $currency,
+                    'group_code'       => $groupCode,
+                    'status'           => 'pending',
+                    'order_id'         => null,
+                    'expires_at'       => now()->addSeconds(InventoryService::DEFAULT_TTL_SECONDS),
+                ]
+            );
+        }
+
+        return [
+            'ref'         => $ref,
+            'has_items'   => !empty($lineItems),
+            'items'       => $lineItems,
+            'unavailable' => $unavailable,
+            'total_minor' => $totalMinor,
+            'currency'    => $currency,
+            'summary'     => $this->buildSummary($lineItems, $unavailable, $totalMinor, $currency),
+        ];
+    }
+
+    /**
+     * Convert the held cart into a real order + commit the stock.
+     *
+     * @return array{ok:bool, order_id?:int, total_minor?:int, currency?:?string, error?:string}
+     */
+    public function confirm(int $wsId, string $customerPhone): array
+    {
+        $digits  = preg_replace('/\D+/', '', $customerPhone);
+        $pending = WaPendingOrder::where('workspace_id', $wsId)
+            ->where('customer_phone', $digits)->where('status', 'pending')->first();
+
+        if (!$pending || empty($pending->items_json)) {
+            return ['ok' => false, 'error' => 'no_pending_order'];
+        }
+
+        try {
+            return DB::transaction(function () use ($wsId, $digits, $pending) {
+                $order = WaOrder::create([
+                    'workspace_id'  => $wsId,
+                    'source'        => 'whatsapp_ai',
+                    'customer_phone'=> $digits,
+                    'items_json'    => $pending->items_json,
+                    'total_minor'   => (int) $pending->total_minor,
+                    'currency_code' => $pending->currency_code,
+                    'status'        => 'pending',   // awaiting merchant action (P6 dashboard)
+                    'meta_json'     => array_filter(['group_code' => $pending->group_code]),
+                ]);
+
+                foreach ($pending->items_json as $li) {
+                    WaOrderItem::create([
+                        'order_id'      => $order->id,
+                        'product_id'    => $li['product_id'] ?? null,
+                        'retailer_id'   => $li['retailer_id'] ?? null,
+                        'name'          => $li['name'] ?? '',
+                        'image_url'     => $li['image_url'] ?? null,
+                        'quantity'      => (int) ($li['qty'] ?? 1),
+                        'price_minor'   => (int) ($li['price_minor'] ?? 0),
+                        'currency_code' => $li['currency'] ?? $pending->currency_code,
+                    ]);
+                }
+
+                // Settle the holds against this order.
+                $this->inventory->commitByRef($wsId, $pending->ref, (int) $order->id);
+
+                $pending->forceFill(['status' => 'confirmed', 'order_id' => $order->id])->save();
+
+                return [
+                    'ok'          => true,
+                    'order_id'    => (int) $order->id,
+                    'total_minor' => (int) $order->total_minor,
+                    'currency'    => $order->currency_code,
+                    'group_code'  => $pending->group_code,
+                    'summary'     => $this->buildConfirmedText((int) $order->id, $pending->items_json ?? [], (int) $order->total_minor, $order->currency_code),
+                ];
+            });
+        } catch (\Throwable $e) {
+            Log::error('[ORDERING] confirm failed: ' . $e->getMessage());
+            return ['ok' => false, 'error' => 'confirm_failed'];
+        }
+    }
+
+    /** Abandon the in-flight cart and free its held stock. */
+    public function cancel(int $wsId, string $customerPhone): array
+    {
+        $digits = preg_replace('/\D+/', '', $customerPhone);
+        $ref    = WaPendingOrder::refFor($wsId, $digits);
+        $released = $this->inventory->releaseByRef($wsId, $ref);
+        WaPendingOrder::where('workspace_id', $wsId)->where('customer_phone', $digits)
+            ->where('status', 'pending')->update(['status' => 'cancelled']);
+        return ['ok' => true, 'released' => $released];
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────
+
+    /** Ask the LLM to turn the message into {items:[{name,qty}]}. */
+    private function aiParseItems(int $wsId, string $text, string $model): array
+    {
+        $ml = strtolower($model);
+        $provider = str_starts_with($ml, 'claude') ? 'anthropic'
+                  : (str_starts_with($ml, 'gemini') ? 'gemini'
+                  : ((str_starts_with($ml, 'mistral') || str_starts_with($ml, 'ministral') || str_starts_with($ml, 'open-mistral') || str_starts_with($ml, 'open-mixtral')) ? 'mistral'
+                  : 'openai'));
+
+        $system = 'You convert a customer\'s WhatsApp message into a product order. '
+                . 'Respond with ONLY a single valid JSON object of the form '
+                . '{"items":[{"name":"<product as the customer wrote it, any language>","qty":<number>}]}. '
+                . 'Default qty to 1 when unspecified. If there is no order, return {"items":[]}. '
+                . 'No markdown, no commentary — JSON only.';
+
+        $reply = $this->ai->callProvider(
+            provider:     $provider,
+            model:        $model,
+            workspaceId:  $wsId,
+            systemPrompt: $system,
+            userPrompt:   $text,
+            maxTokens:    600,
+            temperature:  0.1,
+            jsonMode:     true,
+        );
+
+        Log::info('[FLOWTRACE] order aiParse', [
+            'workspace_id' => $wsId,
+            'provider'     => $provider,
+            'text'         => mb_substr($text, 0, 200),
+            'reply'        => is_string($reply) ? mb_substr($reply, 0, 400) : '(null — provider failed / no AI key)',
+        ]);
+        if (!is_string($reply) || $reply === '') return [];
+        $json = $this->extractJson($reply);
+        $items = is_array($json['items'] ?? null) ? $json['items'] : [];
+        // Normalise → [['name'=>, 'qty'=>], ...]
+        $out = array_values(array_filter(array_map(function ($i) {
+            if (!is_array($i)) return null;
+            $name = trim((string) ($i['name'] ?? $i['product'] ?? $i['item'] ?? ''));
+            if ($name === '') return null;
+            return ['name' => $name, 'qty' => max(1, (int) ($i['qty'] ?? $i['quantity'] ?? 1))];
+        }, $items)));
+        Log::info('[FLOWTRACE] order aiParse → ' . count($out) . ' item(s): '
+            . implode(', ', array_map(fn ($i) => $i['qty'] . '× ' . $i['name'], $out)));
+        return $out;
+    }
+
+    /** Short order recap for the GROUP post (P5) — "New order #N … Total …". */
+    private function buildConfirmedText(int $orderId, array $items, int $totalMinor, ?string $currency): string
+    {
+        $lines = ['*New order #' . $orderId . '*'];
+        foreach ($items as $li) {
+            $lines[] = '• ' . (int) ($li['qty'] ?? 1) . ' × ' . ($li['name'] ?? '');
+        }
+        $lines[] = '*Total: ' . WaProduct::formatCurrency($totalMinor, $currency) . '*';
+        return implode("\n", $lines);
+    }
+
+    /** Tolerant JSON extractor — strips fences / leading prose if any slipped in. */
+    private function extractJson(string $s): array
+    {
+        $s = trim($s);
+        $decoded = json_decode($s, true);
+        if (is_array($decoded)) return $decoded;
+        if (preg_match('/\{.*\}/s', $s, $m)) {
+            $decoded = json_decode($m[0], true);
+            if (is_array($decoded)) return $decoded;
+        }
+        return [];
+    }
+
+    /** Build the WhatsApp-friendly order summary text. */
+    private function buildSummary(array $items, array $unavailable, int $totalMinor, ?string $currency): string
+    {
+        if (empty($items)) {
+            $lines = ["Sorry, I couldn't find any of those items in our catalog."];
+            if (!empty($unavailable)) {
+                $lines[] = '';
+                foreach ($unavailable as $u) {
+                    $lines[] = '• ' . ($u['name'] ?? '') . ' — not available';
+                }
+            }
+            return implode("\n", $lines);
+        }
+
+        $lines = ['*Your order*'];
+        foreach ($items as $li) {
+            $lineTotal = WaProduct::formatCurrency((int) $li['price_minor'] * (int) $li['qty'], $li['currency'] ?? $currency);
+            $lines[] = '• ' . $li['qty'] . ' × ' . $li['name'] . ' — ' . $lineTotal;
+        }
+        $lines[] = '';
+        $lines[] = '*Total: ' . WaProduct::formatCurrency($totalMinor, $currency) . '*';
+
+        if (!empty($unavailable)) {
+            $lines[] = '';
+            $lines[] = '_Not available:_';
+            foreach ($unavailable as $u) {
+                $why = ($u['reason'] ?? '') === 'out_of_stock'
+                    ? 'out of stock' . (isset($u['available']) ? ' (' . (int) $u['available'] . ' left)' : '')
+                    : 'not found';
+                $lines[] = '• ' . ($u['qty'] ?? 1) . ' × ' . ($u['name'] ?? '') . ' — ' . $why;
+            }
+        }
+
+        $lines[] = '';
+        $lines[] = 'Reply *CONFIRM* to place the order, or *CANCEL* to discard.';
+        return implode("\n", $lines);
+    }
+}

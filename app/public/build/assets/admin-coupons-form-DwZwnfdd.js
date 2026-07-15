@@ -1,0 +1,1 @@
+import{T as n}from"./tom-select-wx7WhiJ3.js";function l(){const e=document.getElementById("co-plans");e&&new n(e,{plugins:["remove_button","clear_button"],placeholder:"Pick one or more plans (empty = any plan)…",maxOptions:null,hidePlaceholder:!1,searchField:["text"]})}export{l as default};

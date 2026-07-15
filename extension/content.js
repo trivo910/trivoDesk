@@ -1,7 +1,7 @@
 // Content Script for WaDesk Extension - Production Ready
 // ===================== CONFIG =====================
 // Set your server URL here (from your Laravel .env APP_URL)
-const WADESK_SERVER_URL = 'http://192.168.1.189:8008';
+const WADESK_SERVER_URL = 'http://127.0.0.1:8000';
 // ===================== END CONFIG =====================
 console.log('[WaDesk] Content Script Loaded v1.0.0');
 

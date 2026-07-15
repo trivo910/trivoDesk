@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Caveat:wght@600;700&display=swap');
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-serif: 'Fraunces', serif;
+    --font-mono: '"JetBrains Mono"', monospace;
+
+    --color-paper-0: #FBFAF6;
+    --color-paper-50: #F5F3EC;
+    --color-paper-100: #EFEBE0;
+    --color-paper-200: #E5DFD0;
+    --color-paper-300: #D4CCB6;       /* prototype-exact; was D6CDB6 — 2-hex drift */
+
+    --color-ink-300: #C3CCC9;          /* added — prototype uses for hairline dots */
+    --color-ink-400: #9AA8A4;          /* prototype-exact; was 92A29E */
+    --color-ink-500: #6B807C;
+    --color-ink-600: #3A5A55;
+    --color-ink-700: #1F4540;
+    --color-ink-800: #13312D;
+    --color-ink-900: #0B1F1C;
+    --color-ink-950: #070D0C;          /* added — deepest black, prototype */
+
+    --color-wa-deep: #075E54;
+    --color-wa-teal: #128C7E;
+    --color-wa-green: #25D366;
+    --color-wa-mint: #DCF8C6;
+    --color-wa-chat: #ECE5DD;
+    --color-wa-bubble: #E7FFDB;
+
+    --color-accent-coral: #E87A5D;
+    --color-accent-amber: #E5A04E;
+    --color-accent-sand: #D9C9A3;
+    --color-accent-plum: #5B3D8A;      /* added — prototype */
+    --color-accent-sky: #3E7AA1;       /* added — prototype */
+
+    --shadow-card: 0 1px 0 rgba(11,31,28,0.04), 0 1px 2px rgba(11,31,28,0.04);
+    --shadow-soft: 0 8px 24px -12px rgba(7,94,84,0.18);
+}
+
+@import './wadesk.css';
+
+/* frontend.css is its own Vite entry — loaded directly by the
+ * frontend layout via @vite(['resources/css/frontend.css']).
+ * The dashboard / admin / user shell bundles never pull it in. */
+
+/* ──────────────────────────────────────────────────────────────────
+ * Mobile-responsiveness backstop (admin + user shells).
+ * Bare element selectors, so any Tailwind utility (w-*, max-w-*, h-*)
+ * still wins — desktop is untouched. These only stop inner content from
+ * forcing a horizontal scrollbar on small screens.
+ * ────────────────────────────────────────────────────────────────── */
+/* NB: intentionally NOT svg — inline SVGs here are either sized icons
+   (explicit w- and h- utilities) or functional canvases (the flow-builder
+   edge layer is width=4000, plus minimaps and charts). Clamping those to
+   max-width:100% squashes them to nothing (e.g. flow connection lines
+   vanish). Only real media is clamped. */
+img, video, canvas, iframe { max-width: 100%; }
+/* Root-level horizontal-overflow net for the admin + user shells. clip on
+   <html> directly (not only <body>) so a stray wide child can never make the
+   page scroll sideways on mobile. clip (not hidden) keeps overflow-y visible,
+   so vertical sticky headers/sidebars and inner overflow-x-auto scrollers all
+   keep working. Desktop is unaffected (nothing exceeds the viewport there). */
+html { overflow-x: clip; }
+
