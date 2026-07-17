@@ -283,6 +283,54 @@
             </div>
         </section>
 
+        {{-- Grant temporary plan access — manual, no-gateway equivalent of a real purchase. --}}
+        <section class="bg-paper-0 border border-paper-200 rounded-2xl p-5 shadow-card">
+            <div class="flex items-start justify-between gap-4 flex-wrap mb-3">
+                <div>
+                    <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-500">{{ __('Manual grant') }}</div>
+                    <h2 class="font-serif text-[22px] leading-tight mt-1">{{ __('Grant temporary access') }}</h2>
+                    <p class="text-[11.5px] text-ink-500 mt-1">
+                        {{ __('Switches the plan and sets an expiry — same effect as a real purchase, no payment involved. Clears the trial badge immediately.') }}
+                    </p>
+                </div>
+                <div class="text-[12px] text-ink-700 text-right">
+                    <div class="text-ink-500">{{ __('Current window') }}</div>
+                    <div class="font-mono mt-0.5">
+                        @if ($workspace->plan_ends_at)
+                            {{ __('Plan until') }} {{ $workspace->plan_ends_at->toFormattedDateString() }}
+                        @elseif ($workspace->trial_ends_at)
+                            {{ __('Trial until') }} {{ $workspace->trial_ends_at->toFormattedDateString() }}
+                        @else
+                            {{ __('No expiry set') }}
+                        @endif
+                    </div>
+                </div>
+            </div>
+            <form action="{{ route('admin.workspaces.grant-plan', $workspace->id) }}" method="POST"
+                class="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-end">
+                @csrf
+                <div>
+                    <label class="text-[11.5px] font-semibold mb-1 block" for="ws-grant-plan">{{ __('Plan') }}</label>
+                    <select id="ws-grant-plan" name="plan" required
+                        class="w-full px-3 py-2 border border-paper-200 rounded-lg text-[12.5px]">
+                        @foreach ($plans as $p)
+                            <option value="{{ $p->id }}" @selected((string) old('plan') === (string) $p->id)>{{ $p->pname }}
+                                ({{ $p->free ? 'free' : '$' . number_format((float) $p->plan_amount, 2) }})</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[11.5px] font-semibold mb-1 block" for="ws-grant-days">{{ __('Days') }}</label>
+                    <input id="ws-grant-days" name="days" type="number" min="1" max="3650" value="{{ old('days', 14) }}"
+                        required class="w-24 px-3 py-2 border border-paper-200 rounded-lg text-[12.5px]">
+                </div>
+                <button type="submit"
+                    class="px-4 py-2 rounded-full bg-wa-deep hover:bg-wa-teal text-paper-0 text-[12.5px] font-semibold whitespace-nowrap">
+                    {{ __('Grant access') }}
+                </button>
+            </form>
+        </section>
+
         {{-- Recent orders + Owner block --}}
         <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
             <div class="lg:col-span-8 bg-paper-0 border border-paper-200 rounded-2xl overflow-hidden shadow-card">

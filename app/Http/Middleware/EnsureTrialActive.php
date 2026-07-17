@@ -8,13 +8,15 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Free-trial hard gate.
+ * Trial / plan hard gate.
  *
- * When the current workspace is on a FREE plan whose trial window has
- * elapsed (Workspace::trialExpired()), the operator can no longer USE
- * any feature — every feature route bounces to /account/plans until they
- * buy a plan. The features stay visible in the nav (so they can see what
- * they'd unlock), but opening one or POSTing to it is blocked.
+ * When the current workspace has no active access — either a FREE plan
+ * whose trial window has elapsed, or a PAID (or admin-granted) plan whose
+ * plan_ends_at has lapsed (Workspace::planIsActive() === false) — the
+ * operator can no longer USE any feature — every feature route bounces to
+ * /account/plans until they buy or renew a plan. The features stay visible
+ * in the nav (so they can see what they'd unlock), but opening one or
+ * POSTing to it is blocked.
  *
  * Deliberately NOT gated (so the user can actually recover):
  *   - the plan picker + checkout + payment callbacks (to buy a plan)
@@ -59,11 +61,11 @@ class EnsureTrialActive
             if ($request->routeIs(...self::ALLOWED)) return $next($request);
 
             $ws = $user->currentWorkspace;
-            if (!$ws || !$ws->trialExpired()) return $next($request);
+            if (!$ws || $ws->planIsActive()) return $next($request);
 
-            // Trial is over — block the feature.
+            // Trial/plan window is over — block the feature.
             $plansUrl = route('account.plans');
-            $message  = __('Your free trial has ended. Choose a plan to keep using your workspace.');
+            $message  = __('Your plan access has ended. Choose a plan to keep using your workspace.');
 
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([

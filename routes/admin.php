@@ -84,6 +84,7 @@ Route::prefix('workspaces')->name('workspaces.')->group(function () {
     Route::put   ('/{id}',             [WorkspacesController::class, 'update'])->whereNumber('id')->name('update');
     Route::delete('/{id}',             [WorkspacesController::class, 'destroy'])->whereNumber('id')->name('destroy');
     Route::post  ('/{id}/toggle',      [WorkspacesController::class, 'toggleStatus'])->whereNumber('id')->name('toggle');
+    Route::post  ('/{id}/grant-plan',  [WorkspacesController::class, 'grantPlan'])->whereNumber('id')->name('grant-plan');
     // #31-36 — Save per-workspace plan limit overrides.
     Route::post  ('/{id}/overrides',   [AdminPagesController::class, 'workspaceSaveOverrides'])->whereNumber('id')->name('overrides');
 });

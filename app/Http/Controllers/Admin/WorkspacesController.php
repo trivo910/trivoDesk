@@ -345,6 +345,37 @@ class WorkspacesController extends Controller
         return back()->with('success', 'Workspace updated.');
     }
 
+    /**
+     * Manual, no-gateway equivalent of CheckoutController::finalizeOrder()'s
+     * plan-purchase branch — grants a real plan for an admin-chosen number
+     * of days. Sets the exact same fields a real purchase would, so every
+     * gate (onTrial, EnsureTrialActive, effectiveLimit) treats it identically.
+     */
+    public function grantPlan(Request $request, string $id): RedirectResponse
+    {
+        $ws = Workspace::findOrFail($id);
+
+        $data = $request->validate([
+            'plan' => ['required', Rule::exists('packages', 'id')],
+            'days' => ['required', 'integer', 'min:1', 'max:3650'],
+        ]);
+
+        $endsAt = now()->addDays((int) $data['days']);
+
+        $ws->forceFill([
+            'plan'          => $data['plan'],
+            'trial_ends_at' => null,
+            'plan_ends_at'  => $endsAt,
+        ])->save();
+
+        Audit::log('admin.workspace.plan_granted', [
+            'resource' => $ws,
+            'meta'     => ['plan' => $data['plan'], 'days' => $data['days'], 'ends_at' => $endsAt->toDateTimeString()],
+        ]);
+
+        return back()->with('success', "Granted access until {$endsAt->toFormattedDateString()}.");
+    }
+
     public function destroy(string $id): RedirectResponse
     {
         $ws = Workspace::findOrFail($id);
