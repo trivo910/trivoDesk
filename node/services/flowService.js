@@ -2292,10 +2292,14 @@ async function executeButtonsNode(node, finalNumber, sock, session, appLocals) {
   );
 
     if (useWaba) {
+      // Same fix as the List node: FlowNormalizer mirrors the single
+      // "Prompt" field into both headerText and bodyText, so only forward
+      // the header when it's actually distinct from the body text.
       const result = await sendWabaButtons(finalNumber, buttonText,
         itemObjs.map((it) => ({ id: it.id, title: it.text || it.answerText })),
         settings,
-        { header: node.headerText, footer: node.footerText }
+        // { header: node.headerText, footer: node.footerText }
+        { header: (node.headerText && node.headerText !== node.bodyText) ? node.headerText : undefined, footer: node.footerText }
       );
       if (!result.success) console.warn(`[FLOW] buttons WABA send failed: ${result.error}`);
       else console.log(`[FLOW] buttons SENT via WABA`);
@@ -2384,8 +2388,13 @@ async function executeListNode(node, finalNumber, sock, session, appLocals) {
         description: it.description ? String(it.description) : undefined,
       })),
     }];
+    // FlowNormalizer mirrors the single "Prompt" field into BOTH headerText
+    // and bodyText (the builder has no separate header input). Sending both
+    // to Meta renders the same text twice — a bold header line above the
+    // body paragraph. Only forward the header when it's actually distinct.
     const result = await sendWabaList(finalNumber, subst(body), node.buttonText || 'Select', sections, settings, {
-      header: node.headerText, footer: node.footerText,
+      header: (node.headerText && node.headerText !== node.bodyText) ? node.headerText : undefined,
+      footer: node.footerText,
     });
     if (!result.success) console.warn(`[FLOW] list WABA send failed: ${result.error}`);
     else console.log(`[FLOW] list SENT via WABA (${sections[0].rows.length} rows)`);

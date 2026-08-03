@@ -1,0 +1,40 @@
+{
+    "flowNodes": [
+        {
+            "id": "n_ihpnub",
+            "type": "trigger",
+            "x": 30.526315789473728,
+            "y": -146.13771017109457,
+            "data": {
+                "kind": "keyword",
+                "keywords": "Hi, Hello, gm, goodmorning, good morning, hey",
+                "tagId": null,
+                "groupId": null,
+                "deviceId": null
+            },
+            "isStart": true
+        },
+        {
+            "id": "n_n4fwa3",
+            "type": "chatbot",
+            "x": 366.3157894736843,
+            "y": -295.8453215236786,
+            "data": {
+                "bot": null
+            }
+        }
+    ],
+    "flowEdges": [],
+    "vars": [
+        {
+            "name": "name",
+            "desc": "Contact name",
+            "default": null
+        },
+        {
+            "name": "phone",
+            "desc": "Phone number",
+            "default": null
+        }
+    ]
+}
