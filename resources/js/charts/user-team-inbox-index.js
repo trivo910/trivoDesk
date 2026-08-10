@@ -3443,10 +3443,19 @@ Limits:
             await api(`/team-inbox/api/conversations/${state.activeId}/tag`, {
                 method: 'POST', body: { name, color },
             });
-            if (priority && priority !== (state.active?.priority || 'normal')) {
-                await api(`/team-inbox/api/conversations/${state.activeId}/priority`, {
-                    method: 'POST', body: { priority },
-                });
+            // Priority is a separate permission from tag (Agents typically
+            // have inbox.tag but not inbox.priority) — skip it up front if
+            // we know it'll be denied, and don't let a denial here mask
+            // the tag that already succeeded.
+            const canSetPriority = state.permissions?.['inbox.priority'] !== false;
+            if (canSetPriority && priority && priority !== (state.active?.priority || 'normal')) {
+                try {
+                    await api(`/team-inbox/api/conversations/${state.activeId}/priority`, {
+                        method: 'POST', body: { priority },
+                    });
+                } catch (err) {
+                    toast('Label applied, but priority update failed: ' + err.message, 'error');
+                }
             }
             await loadActive(state.activeId);
             toast(`Labeled "${name}".`, 'success');
