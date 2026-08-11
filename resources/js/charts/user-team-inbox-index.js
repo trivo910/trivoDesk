@@ -251,6 +251,9 @@ Limits:
         // Hydrated from the URL's ?device_id= on load and written
         // back on every change so the filter survives reloads.
         deviceFilter: null,
+        // Filters the queue to conversations carrying a given tag. Null =
+        // show all labels. Hydrated from the URL's ?tag_id= on load.
+        tagFilter: null,
         statusFilter: 'open',
         search: '',
         bulkMode: false,
@@ -313,6 +316,7 @@ Limits:
             });
             renderAiAgentNav();
             renderTeamNav();
+            renderTagFilter();
             renderMyProfile();
             updateNavRoutingCount();
             updateNavQuickRepliesCount();
@@ -420,11 +424,12 @@ Limits:
 
     // ── Queue ────────────────────────────────────────────────────────────
     // Cheap signature so we can skip rerender when polling returns the
-    // same items in the same order. Only items.id + last_message_at +
-    // inbox_status need to match — those are the bits the queue row
-    // renderer cares about. Counts are compared separately.
+    // same items in the same order. items.id + last_message_at +
+    // inbox_status + unread_count + a tag fingerprint need to match —
+    // those are the bits the queue row renderer cares about. Counts are
+    // compared separately.
     function queueSignature(items) {
-        return (items || []).map(c => `${c.id}:${c.last_message_at}:${c.inbox_status}:${c.unread_count}`).join('|');
+        return (items || []).map(c => `${c.id}:${c.last_message_at}:${c.inbox_status}:${c.unread_count}:${(c.tags || []).map(t => t.id).join(',')}`).join('|');
     }
 
     async function loadQueue(silent = false) {
@@ -435,6 +440,7 @@ Limits:
             });
             if (state.teamFilter)   params.set('team_id',   state.teamFilter);
             if (state.deviceFilter) params.set('device_id', state.deviceFilter);
+            if (state.tagFilter)    params.set('tag_id',    state.tagFilter);
             if (state.search)       params.set('q',         state.search);
             const data = await api(`/team-inbox/api/queue?${params}`);
             const newItems  = data.items  || [];
@@ -586,6 +592,45 @@ Limits:
         });
     }
 
+    // Label filter — mirrors the device-filter pattern: a plain <select>
+    // whose options are (re)built from state.tags, hydrated from ?tag_id=
+    // on first load, and persisted back into the URL on change so a
+    // refresh/deep-link keeps the operator on the same filtered view.
+    // The wrapper is hidden entirely when the workspace has no tags yet.
+    function renderTagFilter() {
+        const wrap = $('#inbox-tag-filter-wrap');
+        const sel  = $('#inbox-tag-filter');
+        if (!wrap || !sel) return;
+        const tags = state.tags || [];
+        wrap.classList.toggle('hidden', tags.length === 0);
+        if (tags.length === 0) return;
+        const current = sel.value;
+        sel.innerHTML = `<option value="">${escape('All labels')}</option>` +
+            tags.map(t => `<option value="${t.id}">${escape(t.name)}</option>`).join('');
+        // Preserve the active selection across re-renders (e.g. a new
+        // label created elsewhere refetches state.tags and calls back in).
+        const restore = state.tagFilter != null ? String(state.tagFilter) : current;
+        if (restore && tags.some(t => String(t.id) === restore)) sel.value = restore;
+    }
+
+    const tagFilterEl = $('#inbox-tag-filter');
+    if (tagFilterEl) {
+        try {
+            const initial = new URLSearchParams(window.location.search).get('tag_id');
+            if (initial) state.tagFilter = initial;
+        } catch (_) { /* malformed URL — ignore */ }
+
+        tagFilterEl.addEventListener('change', (e) => {
+            const v = e.target.value;
+            state.tagFilter = v || null;
+            const url = new URL(window.location);
+            if (state.tagFilter) url.searchParams.set('tag_id', state.tagFilter);
+            else                 url.searchParams.delete('tag_id');
+            window.history.replaceState({}, '', url);
+            loadQueue();
+        });
+    }
+
     function renderCounts() {
         // hide the badge entirely when the count is 0 — leaving an empty
         // pill behind looks like a broken UI element rather than "zero"
@@ -670,7 +715,7 @@ Limits:
 
     function convRow(c) {
         const initials = (c.title || '?').split(/\s+/).map(s => s[0] || '').slice(0, 2).join('').toUpperCase() || '?';
-        const tag = (n, c) => `<span class="px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-paper-100 text-ink-700">${escape(n)}</span>`;
+        const tagChips = (c.tags || []).map(t => `<span class="px-1.5 py-0.5 rounded-full text-[9.5px] font-mono" style="background:${escape(t.color || '#075E54')}20;color:${escape(t.color || '#075E54')}">${escape(t.name)}</span>`).join('');
         const sla = c.sla_breached
             ? `<span class="px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-accent-coral/20 text-accent-coral">SLA</span>`
             : '';
@@ -703,6 +748,7 @@ Limits:
                     if (ds && ds !== 'cloud') tipParts.push(`Status: ${ds}`);
                     return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9.5px] font-mono bg-wa-bubble/40 text-wa-deep" title="${escape(tipParts.filter(Boolean).join(' · '))}"><span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span><svg viewBox="0 0 16 16" class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4.5" y="2" width="7" height="12" rx="1.5"/><path d="M7 12.5h2"/></svg>${escape(c.device_label)}</span>`;
                 })() : ''}
+                ${tagChips}
                 ${priorityPill}
                 ${sla}
               </div>
@@ -3417,7 +3463,7 @@ Limits:
             // Refetch the workspace tags so the new one appears in the
             // picker on next open.
             const data = await api('/team-inbox/api/tags');
-            if (Array.isArray(data)) state.tags = data;
+            if (Array.isArray(data)) { state.tags = data; renderTagFilter(); }
             await loadActive(state.activeId);
             renderLabelPicker();
             toast(`Labeled "${name}".`, 'ok');
@@ -3791,7 +3837,13 @@ Limits:
         });
         if (!name) return;
         api('/team-inbox/api/tags', { method: 'POST', body: { name } })
-            .then(r => bulkAction('tag', { tag_id: r.tag.id }))
+            .then(r => {
+                if (!(state.tags || []).some(t => t.id === r.tag.id)) {
+                    state.tags = [...(state.tags || []), r.tag];
+                    renderTagFilter();
+                }
+                return bulkAction('tag', { tag_id: r.tag.id });
+            })
             .catch(e => toast('Tag failed: ' + e.message, 'error'));
     });
     $('#bulk-assign')?.addEventListener('click', () => {

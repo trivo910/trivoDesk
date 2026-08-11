@@ -504,6 +504,7 @@ class TeamInboxController extends Controller
         // already prevents an operator from filtering on another
         // workspace's device, so no extra ownership guard needed here.
         $deviceId = $request->query('device_id') ? (int) $request->query('device_id') : null;
+        $tagId = $request->query('tag_id') ? (int) $request->query('tag_id') : null;
         $search = trim((string) $request->query('q', ''));
         $page   = max(1, (int) $request->query('page', 1));
         $perPage = min(100, (int) $request->query('per_page', 30));
@@ -546,11 +547,12 @@ class TeamInboxController extends Controller
         };
 
         if ($teamId) $q->forTeam($teamId);
+        if ($tagId)  $q->whereHas('tags', fn ($w) => $w->where('tags.id', $tagId));
 
         // Hydrate (so encrypted title/preview decrypts) — same pattern as
         // the existing chat list. Ciphertext can't be LIKE-searched.
         $items = $q->orderByDesc('last_message_at')->orderByDesc('id')
-            ->with(['assignee:id,name', 'team:id,name,color'])
+            ->with(['assignee:id,name', 'team:id,name,color', 'tags:id,name,color'])
             ->limit($perPage * 4)->get();
 
         if ($search !== '') {
@@ -3369,6 +3371,9 @@ class TeamInboxController extends Controller
             'assignee_team_id'  => $c->assignee_team_id,
             'team_name'         => $c->relationLoaded('team')     ? optional($c->team)->name     : null,
             'team_color'        => $c->relationLoaded('team')     ? optional($c->team)->color    : null,
+            'tags'              => $c->relationLoaded('tags')
+                ? $c->tags->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'color' => $t->color])->values()->all()
+                : [],
             'assignee_agent_id' => $c->assignee_agent_id,
             'agent_name'        => optional($agent)->name,
             'agent_color'       => optional($agent)->avatar_color,

@@ -216,6 +216,20 @@
                     </div>
                 @endif
 
+                {{-- Label filter — options are populated client-side from
+ state.tags (loaded via /team-inbox/api/bootstrap) since the
+ workspace's tag list isn't known at blade-render time. Hidden
+ by JS when the workspace has zero tags. Selecting a value
+ narrows /team-inbox/api/queue via ?tag_id=. --}}
+                <div id="inbox-tag-filter-wrap" class="hidden flex items-center gap-2">
+                    <label for="inbox-tag-filter"
+                        class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-500 shrink-0">{{ __('Label') }}</label>
+                    <select id="inbox-tag-filter"
+                        class="flex-1 px-2 py-1 text-[12px] rounded-md border border-paper-200 bg-paper-50 focus:outline-none focus:bg-paper-0 focus:border-wa-deep">
+                        <option value="">{{ __('All labels') }}</option>
+                    </select>
+                </div>
+
                 <!-- Bulk-select toolbar + active team label -->
                 <div class="flex items-center justify-between text-[10.5px] text-ink-500">
                     <button id="bulk-toggle" class="inline-flex items-center gap-1.5 hover:text-ink-900">
