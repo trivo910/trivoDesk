@@ -630,6 +630,12 @@
                 const aiChip = c.agent_name ?
                     `<span class="kb-chip" style="background:${esc(c.agent_color || '#8D6BA0')}22;color:${esc(c.agent_color || '#8D6BA0')}">🤖 ${esc(c.agent_name)}</span>` :
                     '';
+                // Labels — same data the list view's queue rows already
+                // consume (serializeListItem() ships a tags[] array per
+                // conversation), just not painted here yet.
+                const tagChips = (c.tags || []).map(t =>
+                    `<span class="kb-chip" style="background:${esc(t.color || '#075E54')}1A;color:${esc(t.color || '#075E54')}">${esc(t.name)}</span>`
+                ).join('');
                 const slaChip = c.sla_breached ? '<span class="kb-chip kb-chip-sla">SLA</span>' : '';
                 // Per-card device chip — only renders when the workspace is in
                 // multi-device mode AND the conversation has a stamped device.
@@ -651,7 +657,7 @@
  </div>
  <div class="preview text-[12px] text-ink-600 leading-snug mb-2">${esc(c.preview || '')}</div>
  <div class="flex items-center gap-1 flex-wrap">
- ${assigneeChip}${teamChip}${aiChip}${deviceChip}${prioChip}${slaChip}
+ ${assigneeChip}${teamChip}${aiChip}${deviceChip}${tagChips}${prioChip}${slaChip}
  <span class="flex-1"></span>
  <span class="kb-chip-time">${esc(fmtTime(c.last_message_at))}</span>
  </div>
