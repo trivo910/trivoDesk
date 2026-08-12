@@ -289,7 +289,7 @@ export default function userDealsBoard() {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.76.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm5.8 14.06c-.24.68-1.42 1.32-1.95 1.36-.5.04-.5.42-3.16-.66-2.66-1.08-4.32-3.82-4.45-4-.13-.18-1.06-1.41-1.06-2.69 0-1.28.67-1.91.91-2.17.24-.26.52-.32.7-.32l.5.01c.16.01.38-.06.59.45.24.58.81 2 .88 2.14.07.14.12.31.02.49-.09.18-.14.29-.27.45-.14.16-.29.36-.41.48-.14.14-.28.29-.12.57.16.28.71 1.17 1.53 1.9 1.05.94 1.94 1.23 2.22 1.37.28.14.44.12.6-.07.18-.21.69-.81.87-1.09.18-.28.36-.23.6-.14.24.09 1.55.73 1.81.87.27.14.44.21.51.32.07.12.07.66-.17 1.34Z"/></svg>
                         Message
                     </a>
-                    <a href="${d.conversation_id ? `/team-inbox?c=${esc(d.conversation_id)}` : `${chatBase}?to=${esc(d.contact.wa_phone)}`}" class="dl-btn dl-btn-ghost text-center">${d.conversation_id ? 'Open in inbox' : 'Open chat'}</a>
+                    <a href="${d.conversation_id ? `/team-inbox#c=${esc(d.conversation_id)}` : `${chatBase}?to=${esc(d.contact.wa_phone)}`}" class="dl-btn dl-btn-ghost text-center">${d.conversation_id ? 'Open in inbox' : 'Open chat'}</a>
                 </div>` : ''}
             </div>` : `
             <div class="rounded-xl border border-dashed border-paper-200 p-3 text-[12px] text-ink-500">
