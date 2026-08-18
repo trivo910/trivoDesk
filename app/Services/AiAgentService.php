@@ -755,12 +755,12 @@ class AiAgentService
               ]
             : $user;
         $messages = [['role' => 'user', 'content' => $content]];
-        // Structured-extraction mode — Anthropic has no json_object flag, so we
-        // PREFILL the assistant turn with "{" which forces the model to continue
-        // a JSON object. We prepend the "{" back onto the returned continuation.
-        if ($jsonMode) {
-            $messages[] = ['role' => 'assistant', 'content' => '{'];
-        }
+        // Structured-extraction mode: Anthropic has no json_object flag. We used
+        // to prefill the assistant turn with "{" to force a JSON continuation,
+        // but assistant-message prefill now returns a 400 on every current
+        // Claude model (Opus/Sonnet 4.6+, Fable 5) — so we rely on the caller's
+        // system prompt instructing a JSON-only reply instead (callers already
+        // tolerate/strip code fences around the response).
         $res = Http::withHeaders([
             'x-api-key'         => $key,
             'anthropic-version' => '2023-06-01',
@@ -772,12 +772,9 @@ class AiAgentService
         ]);
         if ($res->ok()) {
             $text = trim((string) ($res->json('content.0.text') ?? ''));
-            if ($jsonMode && $text !== '') {
-                $text = '{' . $text;   // restore the prefilled opening brace
-            }
             return $text ?: null;
         }
-        Log::warning('[AI-AGENT] Anthropic non-200', ['status' => $res->status()]);
+        Log::warning('[AI-AGENT] Anthropic non-200', ['status' => $res->status(), 'body' => substr($res->body(), 0, 300)]);
         return null;
     }
 
@@ -804,7 +801,7 @@ class AiAgentService
         if ($res->ok()) {
             return trim((string) ($res->json('candidates.0.content.parts.0.text') ?? '')) ?: null;
         }
-        Log::warning('[AI-AGENT] Gemini non-200', ['status' => $res->status()]);
+        Log::warning('[AI-AGENT] Gemini non-200', ['status' => $res->status(), 'body' => substr($res->body(), 0, 300)]);
         return null;
     }
 
