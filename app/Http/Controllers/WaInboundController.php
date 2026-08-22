@@ -135,7 +135,7 @@ class WaInboundController extends Controller
         // Match the device by digits-only phone — phone_number is
         // encrypted-at-rest so we can't SQL-WHERE on it, we scan in PHP.
         $device = Device::query()
-            ->get(['id', 'user_id', 'country_code', 'phone_number'])
+            ->get(['id', 'user_id', 'workspace_id', 'country_code', 'phone_number'])
             ->first(function ($d) use ($devicePhoneDigits) {
                 $full = preg_replace('/\D+/', '', (string) ($d->country_code . $d->phone_number));
                 return $full === $devicePhoneDigits;
@@ -269,7 +269,8 @@ class WaInboundController extends Controller
         $isNewConversation = !$convo;
 
         if (!$convo) {
-            $wsId = \App\Models\User::query()->whereKey($userId)->value('current_workspace_id');
+            $wsId = $device->workspace_id
+                ?: \App\Models\User::query()->whereKey($userId)->value('current_workspace_id');
             $convo = Conversation::create([
                 'user_id'          => $userId,
                 'workspace_id'     => $wsId,
