@@ -140,6 +140,8 @@ class AdminPagesController extends Controller
         // Customer REST API (/api/v1) requests-per-minute for this plan.
         // 0 = inherit global default (security.api_rate_limit_per_minute).
         'api_rate_limit_per_minute',
+        // Sprint 11 — Sales Pipeline / Deal Management CRM. NULL = unlimited.
+        'pipelines_limit',
     ];
 
     /**
@@ -191,6 +193,8 @@ class AdminPagesController extends Controller
         'access_sla_policies',
         'access_translation',
         'access_data_residency',
+        // Sprint 11 — Sales Pipeline / Deal Management CRM.
+        'access_sales_pipeline',
     ];
 
     public function devices(): View

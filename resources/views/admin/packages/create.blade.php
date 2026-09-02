@@ -41,6 +41,7 @@
         'sla_policies_limit' => 'SLA policies',
         'translation_chars_monthly' => 'Translation chars / mo',
         'api_rate_limit_per_minute' => 'API rate limit / min (0 = default)',
+        'pipelines_limit' => 'Sales pipelines',
     ];
     $featureLabels = [
         'autoreply' => 'Auto-reply system',
@@ -93,6 +94,7 @@
         'access_sla_policies' => 'SLA policies',
         'access_translation' => 'Multilingual auto-translation',
         'access_data_residency' => 'Data residency (EU/local) drivers',
+        'access_sales_pipeline' => 'Sales pipeline (Deal CRM)',
     ];
 
     // Logical limit groups (mapped to the columns the form ships with).
@@ -140,7 +142,7 @@
             'drip_campaigns_limit',
             'appointments_limit',
         ],
-        'Other caps' => ['webhooks_limit', 'routing_rules_limit', 'api_rate_limit_per_minute'],
+        'Other caps' => ['webhooks_limit', 'routing_rules_limit', 'api_rate_limit_per_minute', 'pipelines_limit'],
     ];
     // Logical feature groups.
     $featureGroups = [
@@ -167,6 +169,7 @@
             'access_appointment_booking',
             'access_sla_policies',
             'role_based_permissions',
+            'access_sales_pipeline',
         ],
         'AI & calling' => [
             'access_waba_calling',
