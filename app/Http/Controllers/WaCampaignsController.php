@@ -1303,9 +1303,30 @@ class WaCampaignsController extends Controller
             return;
         }
 
-        // Sender phone — read once from the device picked in step 1.
+        // Sender phone — read once from the sender picked in step 1. The
+        // campaign's device_id is a COMPOSITE reference (WorkspaceEngine::
+        // senderForKey): for Baileys it's a `devices` row id, but for WABA/
+        // Twilio it's a `wa_provider_configs` row id. Looking it up in the
+        // wrong table silently resolves nothing, leaving the send with no
+        // `from_number` — the dispatcher then reports "no connected device"
+        // even though the WABA/Twilio sender is actually connected fine.
+        $campaignProvider = strtolower((string) ($campaign->provider ?? ''));
         $devicePhone = null;
-        if ($campaign->device_id) {
+        if ($campaign->device_id && in_array($campaignProvider, ['waba', 'twilio'], true)) {
+            // Scope by the CAMPAIGN's workspace, not the auth session the
+            // sweep doesn't have. Fall back to a direct lookup so a config
+            // row whose workspace_id doesn't match (shouldn't normally
+            // happen, but mirrors the Device fallback below) still resolves.
+            $cfg = \App\Models\WaProviderConfig::query()
+                ->forWorkspace($campaign->workspace_id)
+                ->find($campaign->device_id);
+            if (! $cfg) {
+                $cfg = \App\Models\WaProviderConfig::query()->find($campaign->device_id);
+            }
+            if ($cfg) {
+                $devicePhone = preg_replace('/\D+/', '', (string) $cfg->phone_number) ?: null;
+            }
+        } elseif ($campaign->device_id) {
             // Scope by the CAMPAIGN's workspace/owner (forWorkspace), not
             // forCurrentWorkspace() which reads the auth session the sweep
             // doesn't have. forWorkspace() also falls back to user ownership
@@ -1734,7 +1755,7 @@ class WaCampaignsController extends Controller
             // happens to be WABA-approved would be silently force-routed through
             // Meta Cloud, ignoring the chosen engine. Empty provider == legacy /
             // workspace-default (unchanged for single-engine WABA workspaces).
-            $campaignProvider = strtolower((string) ($campaign->provider ?? ''));
+            // ($campaignProvider is hoisted above the per-contact loop.)
             $usedTemplateSender = false;
             if ($isTemplate && $tplCache
                 && $tplCache->meta_template_id
